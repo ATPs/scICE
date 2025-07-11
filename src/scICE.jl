@@ -706,3 +706,25 @@ function plot_ic(out_,th=1.005;fig_size=(550,500))
     boxplot!(ax, x, y)
     fig
 end
+
+using CSV
+function save_plot_ic(out_, output_path::Union{String,Nothing}=nothing; th=1.005)
+    x = repeat(out_[:n_cluster],inner=length(out_[:ic_vec][1]))
+    y = vcat(out_[:ic_vec]...)
+    
+    # Create DataFrame with the plot data
+    df = DataFrame(
+        n_clusters = x,
+        ic_values = y,
+        threshold = fill(th, length(x))
+    )
+    
+    # If output path is provided, save to CSV
+    if !isnothing(output_path)
+        CSV.write(output_path, df)
+        return nothing
+    end
+    
+    # Otherwise return the DataFrame
+    return df
+end
