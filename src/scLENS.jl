@@ -911,7 +911,7 @@ function save_anndata(fn,input;device_="gpu")
             AnnData(X=scLENS.mat_(denoised_df),
             obs = out_ldf,
             var = DataFrame(:gene => names(denoised_df)[2:end]),
-            obsm=Dict("X_pca" => Matrix(input[:pca_n1][!,2:end]),"X_umap" => input[:umap]),
+            obsm=Dict("X_pca" => Matrix{Float64}(input[:pca_n1][!,2:end]),"X_umap" => input[:umap]),
             obsp=Dict("connectivities" => input[:graph].weights),
             uns=Dict("ic_stat" => input[:ic], "n_cluster" => input[:n_cluster])
             )
@@ -919,7 +919,7 @@ function save_anndata(fn,input;device_="gpu")
             AnnData(X=scLENS.mat_(denoised_df),
             obs = out_ldf,
             var = DataFrame(:gene => names(denoised_df)[2:end]),
-            obsm=Dict("X_pca" => Matrix(input[:pca_n1][!,2:end]),"X_umap" => input[:umap])
+            obsm=Dict("X_pca" => Matrix{Float64}(input[:pca_n1][!,2:end]),"X_umap" => input[:umap])
             )
         end
     else
@@ -927,7 +927,7 @@ function save_anndata(fn,input;device_="gpu")
             AnnData(X=scLENS.mat_(denoised_df),
             obs = out_ldf,
             var = DataFrame(:gene => names(denoised_df)[2:end]),
-            obsm=Dict("X_pca" => Matrix(input[:pca_n1][!,2:end])),
+            obsm=Dict("X_pca" => Matrix{Float64}(input[:pca_n1][!,2:end])),
             obsp=Dict("connectivities" => input[:graph].weights),
             uns=Dict("ic_stat" => input[:ic], "n_cluster" => input[:n_cluster])
             )
@@ -935,7 +935,7 @@ function save_anndata(fn,input;device_="gpu")
             AnnData(X=scLENS.mat_(denoised_df),
             obs = out_ldf,
             var = DataFrame(:gene => names(denoised_df)[2:end]),
-            obsm=Dict("X_pca" => Matrix(input[:pca_n1][!,2:end]))
+            obsm=Dict("X_pca" => Matrix{Float64}(input[:pca_n1][!,2:end]))
             )
         end
     end
@@ -1099,4 +1099,5 @@ end
 end
 
 # #################
+
 
