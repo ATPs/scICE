@@ -10,7 +10,7 @@ using Random:shuffle, shuffle!
 using LinearAlgebra
 using Distributions:Normal
 using NaNStatistics: histcounts, nanmaximum
-using UMAP:UMAP_
+using UMAP
 using Distances:CosineDist
 using JLD2:save as jldsave, load as jldload
 using CairoMakie
@@ -1099,5 +1099,6 @@ end
 end
 
 # #################
+
 
 
