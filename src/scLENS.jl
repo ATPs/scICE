@@ -10,7 +10,7 @@ using Random:shuffle, shuffle!
 using LinearAlgebra
 using Distributions:Normal
 using NaNStatistics: histcounts, nanmaximum
-using UMAP:UMAP_
+using UMAP
 using Distances:CosineDist
 using JLD2:save as jldsave, load as jldload
 using CairoMakie
@@ -215,7 +215,7 @@ function preprocess(tmp_df;min_tp_c=0,min_tp_g=0,max_tp_c=Inf,max_tp_g=Inf,
 
     fc_idx = bidx_1[:] .& bidx_2[:] .& bidx_3[:] .& bidx_4[:] .& bidx_5[:] .& bidx_6[:]
 
-    if any(fc_idx) && any(fc_idx)
+    if any(fc_idx) && any(fg_idx)
         oo_X = X[fc_idx,fg_idx]
         nn_idx = (sum(oo_X,dims=1) .!= 0)[:]
         oo_X = oo_X[:,nn_idx]
@@ -330,21 +330,34 @@ function scaled_gdata(X;dim=1, position_="mean")
 end
 
 
-function _wishart_matrix(X;device="gpu")
+function _wishart_matrix(X;device="gpu",dims=1)
     if device == "gpu"
-        gpu_x = CuMatrix{Float32}(X)
-        out = CuArray{Float32,2}(undef, size(X,1),size(X,1))
-        mul!(out,gpu_x,gpu_x')
-        return Matrix(out) ./ size(X,2)
+        if dims==2
+            gpu_x = CuMatrix{Float32}(X)
+            out = CuArray{Float32,2}(undef, size(X,2),size(X,2))
+            mul!(out,gpu_x',gpu_x)
+            return Matrix(out) ./ size(X,2)
+        elseif dims==1
+            gpu_x = CuMatrix{Float32}(X)
+            out = CuArray{Float32,2}(undef, size(X,1),size(X,1))
+            mul!(out,gpu_x,gpu_x')
+            return Matrix(out) ./ size(X,2)
+        end
     elseif device == "cpu"
         X = if issparse(X)
             Matrix{eltype(X)}(X)
         else
             X
         end
-        out = Array{eltype(X),2}(undef, size(X,1),size(X,1))
-        mul!(out,X,X')
-        return out ./ size(X,2)
+        if dims == 2
+            out = Array{eltype(X),2}(undef, size(X,2),size(X,2))
+            mul!(out,X',X)
+            return out ./ size(X,2)
+        elseif dims==1
+            out = Array{eltype(X),2}(undef, size(X,1),size(X,1))
+            mul!(out,X,X')
+            return out ./ size(X,2)
+        end
     end
 end
 
@@ -479,7 +492,7 @@ end
 function get_eigvec(X;device="gpu")
     N, M = size(X)
     if N > M
-        Y = _wishart_matrix(X',device=device)
+        Y = _wishart_matrix(X,dims=2,device=device)
         ev_, V = _get_eigen(Y,device=device)
         L = ev_
         positive_idx = L .> 0
@@ -499,7 +512,7 @@ function get_eigvec(X;device="gpu")
 
         return nL, new_nVs
     else
-        Y = _wishart_matrix(X,device=device)
+        Y = _wishart_matrix(X,dims=1,device=device)
         ev_, V = _get_eigen(Y,device=device)
         L = ev_
         positive_idx = L .> 0
@@ -516,9 +529,9 @@ end
 function get_sigev(X,Xr;device="gpu")
     n,m = size(X)
     if n > m
-        Y = _wishart_matrix(X',device=device)
+        Y = _wishart_matrix(X,dims=2,device=device)
         ev_, V = _get_eigen(Y,device=device)
-        Yr = _wishart_matrix(Xr',device=device)
+        Yr = _wishart_matrix(Xr,dims=2,device=device)
         evr_, _ = _get_eigen(Yr,device=device)
 
         L = ev_
@@ -556,9 +569,9 @@ function get_sigev(X,Xr;device="gpu")
         return nL, new_nVs, L, L_mp, lambda_c, snL, new_noiseV
         
     else
-        Y = _wishart_matrix(X,device=device)
+        Y = _wishart_matrix(X,dims=1,device=device)
         ev_, V = _get_eigen(Y,device=device)
-        Yr = _wishart_matrix(Xr,device=device)
+        Yr = _wishart_matrix(Xr,dims=1,device=device)
         evr_, _ = _get_eigen(Yr,device=device)
         L = ev_
         Lr = evr_
@@ -853,14 +866,15 @@ This function integrates UMAP embeddings into the `scLENS` results, facilitating
 function apply_umap!(l_dict;k=15,nc=2,md=0.1,metric=CosineDist())
     pca_y = mat_(l_dict[:pca_n1])
     model = if size(pca_y,2) > nc
-        UMAP_(pca_y',nc,metric=metric,n_neighbors=k,min_dist=md)
+        UMAP.fit(pca_y',nc,metric=metric,n_neighbors=k,min_dist=md)
     else
-        UMAP_(mat_(l_dict[:pca])[:,1:3]',metric=metric,n_neighbors=k,min_dist=md)
+        UMAP.fit(mat_(l_dict[:pca])[:,1:3]',metric=metric,n_neighbors=k,min_dist=md)
     end
 
-    l_dict[:umap] = Matrix(model.embedding')
+    l_dict[:umap] = Matrix(hcat(model.embedding...)')
     l_dict[:umap_obj]=model
 end
+
 
 function get_denoised_df(out_ours;device_="gpu")
     g_mat = out_ours[:gene_basis][out_ours[:sig_id],:]
@@ -897,7 +911,7 @@ function save_anndata(fn,input;device_="gpu")
             AnnData(X=scLENS.mat_(denoised_df),
             obs = out_ldf,
             var = DataFrame(:gene => names(denoised_df)[2:end]),
-            obsm=Dict("X_pca" => Matrix(input[:pca_n1][!,2:end]),"X_umap" => input[:umap]),
+            obsm=Dict("X_pca" => Matrix{Float64}(input[:pca_n1][!,2:end]),"X_umap" => input[:umap]),
             obsp=Dict("connectivities" => input[:graph].weights),
             uns=Dict("ic_stat" => input[:ic], "n_cluster" => input[:n_cluster])
             )
@@ -905,7 +919,7 @@ function save_anndata(fn,input;device_="gpu")
             AnnData(X=scLENS.mat_(denoised_df),
             obs = out_ldf,
             var = DataFrame(:gene => names(denoised_df)[2:end]),
-            obsm=Dict("X_pca" => Matrix(input[:pca_n1][!,2:end]),"X_umap" => input[:umap])
+            obsm=Dict("X_pca" => Matrix{Float64}(input[:pca_n1][!,2:end]),"X_umap" => input[:umap])
             )
         end
     else
@@ -913,7 +927,7 @@ function save_anndata(fn,input;device_="gpu")
             AnnData(X=scLENS.mat_(denoised_df),
             obs = out_ldf,
             var = DataFrame(:gene => names(denoised_df)[2:end]),
-            obsm=Dict("X_pca" => Matrix(input[:pca_n1][!,2:end])),
+            obsm=Dict("X_pca" => Matrix{Float64}(input[:pca_n1][!,2:end])),
             obsp=Dict("connectivities" => input[:graph].weights),
             uns=Dict("ic_stat" => input[:ic], "n_cluster" => input[:n_cluster])
             )
@@ -921,7 +935,7 @@ function save_anndata(fn,input;device_="gpu")
             AnnData(X=scLENS.mat_(denoised_df),
             obs = out_ldf,
             var = DataFrame(:gene => names(denoised_df)[2:end]),
-            obsm=Dict("X_pca" => Matrix(input[:pca_n1][!,2:end]))
+            obsm=Dict("X_pca" => Matrix{Float64}(input[:pca_n1][!,2:end]))
             )
         end
     end
@@ -1085,3 +1099,6 @@ end
 end
 
 # #################
+
+
+
